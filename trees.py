@@ -7,7 +7,7 @@ NodeType = Enum('NodeType', 'Null Internal Leaf')
 
 class Node:
     def __init__(self, node_id=-1, node_type=NodeType.Null, left_child=-1, right_child=-1, 
-                 split_feature=-1, split_value=-1e30, depth=-1, classification=-1, average_target=-1):
+                 split_feature=-1, split_value=-1e30, depth=-1, classification=-1, average_target=None):
         self.node_id = node_id
         self.node_type = node_type
         self.left_child = left_child
@@ -24,7 +24,6 @@ class RandomForest:
         
     def majority_class(self, sample):
         votes = [0 for _ in range(self.nb_classes)]
-        
         for tree in self.trees:
             node = tree[0]
             while (node.node_type == NodeType.Internal):
@@ -33,8 +32,19 @@ class RandomForest:
                 else:
                     node = tree[node.right_child]
             votes[node.classification] += 1
-            
         return np.argmax(votes)
+
+    def average_aggregate_target(self, sample):
+        aggregate_target = 0.0
+        for tree in self.trees:
+            node = tree[0]
+            while (node.node_type == NodeType.Internal):
+                if (sample[node.split_feature] <= node.split_value):
+                    node = tree[node.left_child]
+                else:
+                    node = tree[node.right_child]
+            aggregate_target += node.average_target
+        return aggregate_target / len(self.trees)
         
     def get_hyperplanes(self):
         hyperplanes = [set() for _ in range(self.nb_features)]
@@ -84,17 +94,26 @@ class TreeFile:
                 if key == "nb_nodes":
                     nb_nodes = int(match.group(key))
                     for _ in range(nb_nodes):
-                        node_line = file.readline().split()
-                        nodeType = NodeType.Leaf if node_line[1] == 'LN' else NodeType.Internal
+                        node_params = file.readline().split()
+                        nodeType = NodeType.Leaf if node_params[1] == 'LN' else NodeType.Internal
+
+                        if nb_classes == 1: # regression
+                            classification = -1
+                            average_target = float(node_params[7]) if node_params[7] != "nan" else None
+                        else:
+                            classification = int(node_params[7])
+                            average_target = None
+
                         node = Node(
-                            node_id=node_line[0],
+                            node_id=node_params[0],
                             node_type=nodeType,
-                            left_child=int(node_line[2]),
-                            right_child=int(node_line[3]),
-                            split_feature=int(node_line[4]),
-                            split_value=float(node_line[5]),
-                            depth=int(node_line[6]),
-                            classification=int(node_line[7])
+                            left_child=int(node_params[2]),
+                            right_child=int(node_params[3]),
+                            split_feature=int(node_params[4]),
+                            split_value=float(node_params[5]),
+                            depth=int(node_params[6]),
+                            classification=classification,
+                            average_target=average_target
                         )
                         trees[tree_id].append(node)
                 line = file.readline()
@@ -110,12 +129,13 @@ class TreeFile:
             file.write("NB_FEATURES: {}\n".format(nb_features))
             file.write("NB_CLASSES: {}\n".format(nb_classes))
             file.write("MAX_TREE_DEPTH: {}\n".format(max([node.depth for node in trees[0]])))
-            file.write("Format: node / node type(LN - leave node, IN - internal node) left child / right child / feature / threshold / node_depth / majority class (starts with index 0)\n")
+            file.write("Format: node / node type(LN - leave node, IN - internal node) left child / right child / feature / threshold / node_depth / {}\n".format(TreeFile.target_format(nb_classes)))
             file.write("\n")
             for i, tree in enumerate(trees):
                 file.write("[TREE {}]\n".format(i))
                 file.write("NB_NODES: {}\n".format(len(tree)))
                 for node in tree:
+                    target = node.average_target if nb_classes == 1 else node.classification
                     file.write("{} ".format(node.node_id))
                     file.write("{} ".format("LN" if node.node_type == NodeType.Leaf else "IN"))
                     file.write("{} ".format(node.left_child))
@@ -123,7 +143,14 @@ class TreeFile:
                     file.write("{} ".format(node.split_feature))
                     file.write("{} ".format(node.split_value))
                     file.write("{} ".format(node.depth))
-                    file.write("{}\n".format(node.classification))
+                    file.write("{}\n".format("nan" if target == None else target))
         if print_content:
             with open(filename) as file:
                 print(file.read())
+
+    @staticmethod
+    def target_format(nb_classes):
+        if nb_classes == 1:
+            return "average target ('nan' if internal node)"
+        else:
+            return "majority class (starts with index 0)"

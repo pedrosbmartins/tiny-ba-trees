@@ -1,0 +1,37 @@
+DATASET_NAME: Boston
+ENSEMBLE: RF
+NB_TREES: 3
+NB_FEATURES: 2
+NB_CLASSES: 1
+MAX_TREE_DEPTH: 2
+Format: node / node type (LN - leave node, IN - internal node) / left child / right child / feature / threshold / node_depth / average target ('nan' if internal node)
+
+[TREE 0]
+NB_NODES: 7
+0 IN 1 4 0 6.68 0 nan
+1 IN 2 3 1 14.4 1 nan
+2 LN -1 -1 -1 -1 2 22.44
+3 LN -1 -1 -1 -1 2 15.15
+4 IN 5 6 0 7.44 1 nan
+5 LN -1 -1 -1 -1 2 30.99
+6 LN -1 -1 -1 -1 2 44.82
+
+[TREE 1]
+NB_NODES: 7
+0 IN 1 4 0 6.85 0 nan
+1 IN 2 3 1 14.4 1 nan
+2 LN -1 -1 -1 -1 2 23.3
+3 LN -1 -1 -1 -1 2 15.28
+4 IN 5 6 0 7.47 1 nan
+5 LN -1 -1 -1 -1 2 34.77
+6 LN -1 -1 -1 -1 2 44.19
+
+[TREE 2]
+NB_NODES: 7
+0 IN 1 4 1 5.49 0 nan
+1 IN 2 3 0 7.48 1 nan
+2 LN -1 -1 -1 -1 2 32.87
+3 LN -1 -1 -1 -1 2 45.88
+4 IN 5 6 1 14.92 1 nan
+5 LN -1 -1 -1 -1 2 23.04
+6 LN -1 -1 -1 -1 2 15.06

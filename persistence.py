@@ -22,8 +22,8 @@
 
 import numpy as np
 import sklearn.tree as tree 
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 #################################################################################
 # importing a txt file
@@ -39,6 +39,7 @@ def importTreeCollection(datasetName, silent=False):
     new_is_leaves = []
     new_nodeValues = []
     new_majorityClass = []
+    new_averageTarget = []
     with open(datasetName, "r") as inputFile:
         data = inputFile.readlines()
         for index in range(len(data)):
@@ -80,6 +81,7 @@ def importTreeCollection(datasetName, silent=False):
                 new_is_leaves.append([])
                 new_nodeValues.append([])
                 new_majorityClass.append([])
+                new_averageTarget.append([])
     
     
             elif(len(data[index]) == 8):
@@ -88,12 +90,17 @@ def importTreeCollection(datasetName, silent=False):
                 new_feature[treeIndex].append(int(data[index][4]))
                 new_threshold[treeIndex].append(float(data[index][5]))
                 new_node_depth[treeIndex].append(int(data[index][6]))
-                new_majorityClass[treeIndex].append(int(data[index][7]))
+                if new_numOfClasses == 1: # regression
+                    new_majorityClass[treeIndex].append(-1)
+                    new_averageTarget[treeIndex].append(float(data[index][7]))
+                else:
+                    new_majorityClass[treeIndex].append(int(data[index][7]))
+                    new_averageTarget[treeIndex].append(None)
                 if (data[index][1] == 'LN'):
                     new_is_leaves[treeIndex].append(True)
                 else:
                     new_is_leaves[treeIndex].append(False)
-    return new_dataset, new_ensemble, new_numOfTrees, new_numOfFeatures, new_numOfClasses, new_maxTreeDepth, new_n_nodes, new_children_left, new_children_right, new_feature, new_threshold, new_node_depth, new_is_leaves, new_nodeValues, new_majorityClass
+    return new_dataset, new_ensemble, new_numOfTrees, new_numOfFeatures, new_numOfClasses, new_maxTreeDepth, new_n_nodes, new_children_left, new_children_right, new_feature, new_threshold, new_node_depth, new_is_leaves, new_nodeValues, new_majorityClass, new_averageTarget
 ################################################################################
 
 
@@ -124,17 +131,20 @@ def compute_info_from_dataset(X, y, n_features, n_classes, n_outputs, maxTreeDep
             values[cur] = values[children_left[cur]] + values[children_right[cur]]
         
         if len(y) > 0:
-            for i in range(n_classes[0]):
-                count = np.count_nonzero(y==i)
-                p = count/len(y)
-                impurities[cur] += p*(1-p)
+            if n_classes[0] == 1:
+                y_node = np.mean(y)
+                impurities[cur] = np.sum([(y_node - y[i])**2 for i in range(n_samples[cur])]) / n_samples[cur]  
+            else:
+                for i in range(n_classes[0]):
+                    count = np.count_nonzero(y==i)
+                    p = count/len(y)
+                    impurities[cur] += p*(1-p)
         else:
             impurities[cur] = 1
             
     
     n_samples = np.zeros_like(features)
     impurities = np.zeros_like(thresholds)
-    pred = np.zeros((n_nodes, n_classes[0]), dtype=np.int32)
     compute_samples(0, X, y, n_samples, impurities)
     
     n_samples_norm = np.zeros_like(children_left)
@@ -218,11 +228,11 @@ def create_nodes(n_nodes, n_outputs, n_classes, children_left,
                                ('impurity', '<f8'),
                                ('n_node_samples', '<i8'),
                                ('weighted_n_node_samples', '<f8')])
-    
+
     for i in range(n_nodes):
         nodes[i] = out_nodes[i]
         values[i,0,:] = out_values[i]
-    
+
     return nodes, values , depth
 
 
@@ -243,12 +253,16 @@ def build_tree(X, y, n_features, n_classes, n_outputs, maxTreeDepth,
                                ('n_node_samples', '<i8'),
                                ('weighted_n_node_samples', '<f8')])
     
+    
     # fill values
     actual_values = np.zeros((n_nodes, n_outputs, n_classes[0]), dtype=np.float64)
     for i in range(n_nodes):
-        for c in range(n_classes[0]):
-            actual_values[i][0][c] = 1 if c==values[i] else 0
-            
+        if n_classes[0] == 1:
+            actual_values[i][0][0] = values[i]
+        else:
+            for c in range(n_classes[0]):
+                actual_values[i][0][c] = 1 if c==values[i] else 0
+
     # create nodes
     impurities, n_samples, n_samples_norm = compute_info_from_dataset(
             X, y, n_features, n_classes, n_outputs, maxTreeDepth,
@@ -302,8 +316,8 @@ def classifier_from_file(fn, X, y, pruning=False, compute_score=False, num_trees
     dataset, ensemble, numOfTrees, numOfFeatures, \
     numOfClasses, maxTreeDepth, n_nodes, children_left, \
     children_right, features, thresholds, node_depths, \
-    is_leaves, nodeValues, majorityClass = importTreeCollection(fn, silent=True)
-    
+    is_leaves, nodeValues, majorityClass, _ = importTreeCollection(fn, silent=True)
+
     n_features = numOfFeatures
     n_classes = [numOfClasses]
     n_outputs = 1
@@ -318,3 +332,45 @@ def classifier_from_file(fn, X, y, pruning=False, compute_score=False, num_trees
     
     trees = trees if num_trees == -1 else trees[:num_trees]
     return build_classifier(trees)
+
+#################################################################################
+# creating regressor from file
+#################################################################################
+def regressor_from_file(fn, X, y, pruning=False, compute_score=False, num_trees=-1):
+    dataset, ensemble, numOfTrees, numOfFeatures, \
+    numOfClasses, maxTreeDepth, n_nodes, children_left, \
+    children_right, features, thresholds, node_depths, \
+    is_leaves, nodeValues, _, averageTarget = importTreeCollection(fn, silent=True)
+
+    n_features = numOfFeatures
+    n_classes = np.array([1], dtype=np.intp)
+    n_outputs = 1
+    
+    trees = []
+    for i in range(numOfTrees):
+        t = build_tree(X, y, n_features, n_classes, n_outputs,
+                       maxTreeDepth, n_nodes[i], children_left[i],
+                       children_right[i], features[i], thresholds[i],
+                       averageTarget[i], pruning, compute_score)
+        trees.append(t)
+    
+    trees = trees if num_trees == -1 else trees[:num_trees]
+    return build_regressor(trees)
+
+def build_regressor(trees):
+    
+    def build_regressor_tree(t):
+        dt = DecisionTreeRegressor(random_state=0)
+        dt.n_features_ = t.n_features
+        dt.n_outputs_ = t.n_outputs
+        dt.tree_ = t
+        return dt
+    
+    if len(trees) > 1:
+        clf = RandomForestRegressor(random_state=0, n_estimators=len(trees))
+        clf.estimators_ = [build_regressor_tree(t) for t in trees]
+        clf.n_features_ = trees[0].n_features
+        clf.n_outputs_ = trees[0].n_outputs
+    else:
+        clf = build_regressor_tree(trees[0])
+    return clf

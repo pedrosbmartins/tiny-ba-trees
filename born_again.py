@@ -27,7 +27,10 @@ class FeatureSpace:
     
     def enumerate_cells(self, k, cell_index):
         if (k == self.nb_features):
-            self.cells[cell_index] = self.random_forest.majority_class(self.temp_cell_values)
+            if self.random_forest.nb_classes == 1:
+                self.cells[cell_index] = self.random_forest.average_aggregate_target(self.temp_cell_values)
+            else:
+                self.cells[cell_index] = self.random_forest.majority_class(self.temp_cell_values)
         else:
             stride_value = self.strides[k]
             for i, level in enumerate(self.ordered_hyperplane_levels[k]):
@@ -116,7 +119,8 @@ class BornAgainTree:
                 node_type=NodeType.Leaf,
                 split_value=-1,
                 depth=current_depth,
-                classification=self.fspace.cells[index_bottom]
+                classification=(-1 if self.random_forest.nb_classes == 1 else self.fspace.cells[index_bottom]),
+                average_target=(self.fspace.cells[index_bottom] if self.random_forest.nb_classes == 1 else None)
             )
             self.reborn_tree.append(node)
             return node.node_id
@@ -156,5 +160,5 @@ class BornAgainTree:
                         return node_id
                     
     def export(self, filename, print_content=False):
-        TreeFile.export(filename, "", "BA", self.random_forest.nb_features, self.random_forest.nb_classes, 
+        TreeFile.export(filename, "dataset_name", "BA", self.random_forest.nb_features, self.random_forest.nb_classes, 
                         [self.reborn_tree], print_content=print_content)

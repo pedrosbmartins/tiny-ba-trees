@@ -33,7 +33,7 @@ _colors = [ "{}".format(hex((int(255*c[0])<<16) +
             for c in plt.get_cmap('Pastel2').colors[:-1]]
 
 def to_dot_format(trees, features={}, classes={},
-                  colors = None, simplified=True, gini=False):
+                  colors = None, simplified=True, gini=False, regression=False):
     
     if colors is None:
         colors = _colors.copy()
@@ -72,8 +72,11 @@ def to_dot_format(trees, features={}, classes={},
             else:
                 info += '{} &le; {}<br/>'.format(ft_text, threshold)
         else:
-            output = np.argmax(values[0])
-            info += '<u>{}</u><br/>'.format(classes.get(output, 'Class {}'.format(output)))
+            if regression:
+                info += '{}<br/>'.format(values[0][0])
+            else:
+                output = np.argmax(values[0])
+                info += '<u>{}</u><br/>'.format(classes.get(output, 'Class {}'.format(output)))
             
         if not simplified:
             if gini:
@@ -114,12 +117,12 @@ def to_dot_format(trees, features={}, classes={},
     return dot_content + '}'
 
 def create_graph(tree, features={}, classes={},
-               colors = None,  simplified=True, gini=False):
+               colors = None,  simplified=True, gini=False, regression=False):
     
     if colors is None:
         colors = _colors.copy()
     
-    dot_data = to_dot_format(tree, features, classes, colors, simplified, gini)
+    dot_data = to_dot_format(tree, features, classes, colors, simplified, gini, regression)
     graph = graphviz.Source(dot_data)
     graph = pydotplus.graph_from_dot_data(dot_data)  
     return graph
