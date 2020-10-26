@@ -1,6 +1,6 @@
 import math
 
-from trees import Node, NodeType, TreeFile
+from tinybatrees.trees import Node, NodeType, TreeFile
 
 class FeatureSpace:
     def __init__(self, random_forest):
